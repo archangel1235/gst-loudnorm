@@ -238,25 +238,21 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
     return GST_FLOW_ERROR;
   }
 
-  // get number of samples
   guint samples = gst_buffer_get_size (buf) / sizeof (int16_t);
 
-  // get pointer to samples
   int16_t *samples_ptr = (int16_t *) map.data;
 
-  // calculate loudness
   ebur128_add_frames_short (this->ebur128_state, samples_ptr, samples);
 
-  // get loudness
   double loudness;
   ebur128_loudness_global (this->ebur128_state, &loudness);
 
-  // get gain
   double gain = this->target_loudness - loudness;
 
-  // apply gain
   for (int i = 0; i < samples; ++i) {
-    samples_ptr[i] = (short)(samples_ptr[i] * pow(10, gain / 20.0));
+    if (samples_ptr[i] * pow(10, gain / 20.0) > 32767) samples_ptr[i] = 32767;
+    else if (samples_ptr[i] * pow(10, gain / 20.0) < -32768) samples_ptr[i] = -32768;
+    else samples_ptr[i] = (short)(samples_ptr[i] * pow(10, gain / 20.0));
   }
 
   return GST_FLOW_OK;
