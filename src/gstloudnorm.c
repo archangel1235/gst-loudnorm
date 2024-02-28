@@ -19,14 +19,17 @@
 /**
  * SECTION:element-gstloudnorm
  *
- * The loudnorm element does FIXME stuff.
+ * The loudnorm element does loundness normalization on single channel.
  *
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch-1.0 -v fakesrc ! loudnorm ! FIXME ! fakesink
+ * gst-launch-1.0 filesrc location=audio_3.wav ! wavparse ! audioconvert ! \
+ *  audioresample ! 'audio/x-raw,format=S16LE,channels=1,rate=48000'! \
+ *  loudnorm target-loudness=-23.0 ! audioconvert ! audioresample ! \
+ *  autoaudiosink
  * ]|
- * FIXME Describe what the pipeline does.
+ * this pipeline will normalize the loudness of the audio_3.wav file to -23.0 LUFS
  * </refsect2>
  */
 
@@ -54,8 +57,6 @@ static void gst_loudnorm_finalize (GObject * object);
 
 static gboolean gst_loudnorm_setup (GstAudioFilter * filter,
     const GstAudioInfo * info);
-static GstFlowReturn gst_loudnorm_transform (GstBaseTransform * trans,
-    GstBuffer * inbuf, GstBuffer * outbuf);
 static GstFlowReturn gst_loudnorm_transform_ip (GstBaseTransform * trans,
     GstBuffer * buf);
 
@@ -211,18 +212,6 @@ gst_loudnorm_setup (GstAudioFilter * filter, const GstAudioInfo * info)
   GST_DEBUG_OBJECT (this, "setup");
 
   return TRUE;
-}
-
-/* transform */
-static GstFlowReturn
-gst_loudnorm_transform (GstBaseTransform * trans, GstBuffer * inbuf,
-    GstBuffer * outbuf)
-{
-  GstLoudnorm *loudnorm = GST_LOUDNORM (trans);
-
-  GST_DEBUG_OBJECT (loudnorm, "transform");
-
-  return GST_FLOW_OK;
 }
 
 static GstFlowReturn
