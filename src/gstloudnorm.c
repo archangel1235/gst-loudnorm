@@ -63,7 +63,8 @@ static GstFlowReturn gst_loudnorm_transform_ip (GstBaseTransform * trans,
 enum
 {
   PROP_0,
-  PROP_TARGET_LOUDNESS
+  PROP_TARGET_LOUDNESS,
+  PROP_TARGET_LRA
 };
 
 /* pad templates */
@@ -126,6 +127,11 @@ gst_loudnorm_class_init (GstLoudnormClass * klass)
           "Target Loudness in LUFS", -40.0, 0.0, -27.0,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
+  g_object_class_install_property (gobject_class, PROP_TARGET_LRA,
+      g_param_spec_float ("target-lra", "Target LRA",
+          "Target Loudness Range in LUFS", 1.0, 20.0, 7.0,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
   gobject_class->dispose = gst_loudnorm_dispose;
   gobject_class->finalize = gst_loudnorm_finalize;
   audio_filter_class->setup = GST_DEBUG_FUNCPTR (gst_loudnorm_setup);
@@ -138,8 +144,9 @@ gst_loudnorm_class_init (GstLoudnormClass * klass)
 static void
 gst_loudnorm_init (GstLoudnorm * this)
 {
-  this->ebur128_state = ebur128_init (1, 48000, EBUR128_MODE_I);
+  this->ebur128_state = ebur128_init (1, 48000, EBUR128_MODE_I|EBUR128_MODE_LRA|EBUR128_MODE_SAMPLE_PEAK);
   this->target_loudness = -23.0;
+  this->target_lra = 7.0;
 }
 
 void
@@ -153,6 +160,9 @@ gst_loudnorm_set_property (GObject * object, guint property_id,
   switch (property_id) {
     case PROP_TARGET_LOUDNESS:
       this->target_loudness = g_value_get_float (value);
+      break;
+    case PROP_TARGET_LRA:
+      this->target_lra = g_value_get_float (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -171,6 +181,9 @@ gst_loudnorm_get_property (GObject * object, guint property_id,
   switch (property_id) {
     case PROP_TARGET_LOUDNESS:
       g_value_set_float (value, this->target_loudness);
+      break;
+    case PROP_TARGET_LRA:
+      g_value_set_float (value, this->target_lra);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -195,11 +208,13 @@ gst_loudnorm_dispose (GObject * object)
 void
 gst_loudnorm_finalize (GObject * object)
 {
-  GstLoudnorm *loudnorm = GST_LOUDNORM (object);
+  GstLoudnorm *this = GST_LOUDNORM (object);
 
-  GST_DEBUG_OBJECT (loudnorm, "finalize");
+  GST_DEBUG_OBJECT (this, "finalize");
 
-  /* clean up object here */
+  if (this->ebur128_state) {
+    ebur128_destroy (&this->ebur128_state);
+  }
 
   G_OBJECT_CLASS (gst_loudnorm_parent_class)->finalize (object);
 }
@@ -228,6 +243,7 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
   }
 
   guint samples = gst_buffer_get_size (buf) / sizeof (int16_t);
+  double k = 2.0;
 
   int16_t *samples_ptr = (int16_t *) map.data;
 
@@ -236,7 +252,12 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
   double loudness;
   ebur128_loudness_global (this->ebur128_state, &loudness);
 
-  double gain = this->target_loudness - loudness;
+  double lra;
+  ebur128_loudness_range (this->ebur128_state, &lra);
+
+  if (loudness == -HUGE_VAL) loudness = -23.0;
+
+  double gain = (this->target_loudness - loudness) + k*(this->target_lra - lra);
 
   for (int i = 0; i < samples; ++i) {
     if (samples_ptr[i] * pow(10, gain / 20.0) > 32767) samples_ptr[i] = 32767;

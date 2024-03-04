@@ -39,6 +39,7 @@ struct _GstLoudnorm
   GstAudioFilter base_loudnorm;
   ebur128_state *ebur128_state;
   float target_loudness;
+  float target_lra;
 };
 
 struct _GstLoudnormClass
