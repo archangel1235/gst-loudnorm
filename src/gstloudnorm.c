@@ -220,7 +220,7 @@ gst_loudnorm_init (GstLoudnorm * this)
 {
   this->ebur128_state = ebur128_init (1, 48000, EBUR128_MODE_I|EBUR128_MODE_LRA);
   this->target_loudness = -23.0;
-  this->target_lra = 7.0;
+  this->target_lra = 5.0;
   initQueue(&this->gain_history);
   precomputeGaussianKernel(this->kernel);
 }
@@ -332,11 +332,13 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
 
   if (loudness_global == -HUGE_VAL) loudness_global = -23.0;
 
-  double gain = (this->target_loudness - loudness_momentary);
+  double global_gain = this->target_loudness - loudness_global;
+
+  double momentary_gain = this->target_loudness - loudness_momentary;
+
+  double gain = (momentary_gain < global_gain) ? momentary_gain : global_gain;
 
   pushWithGaussianFilter(&this->gain_history, gain, this->kernel);
-
-  GST_WARNING_OBJECT (this, "Gain: %f, %f", topQueue(&this->gain_history), (this->target_loudness - loudness_momentary));
 
   gain = topQueue(&this->gain_history);
 
