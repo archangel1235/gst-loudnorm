@@ -60,6 +60,12 @@ static gboolean gst_loudnorm_setup (GstAudioFilter * filter,
 static GstFlowReturn gst_loudnorm_transform_ip (GstBaseTransform * trans,
     GstBuffer * buf);
 
+static void precomputeGaussianKernel(double* kernel);
+double gaussianFilter(Queue* queue, double* kernel);
+static void initQueue(Queue *queue);
+static float topQueue(Queue *queue);
+static void pushWithGaussianFilter(Queue* queue, double item, double* kernel); 
+
 enum
 {
   PROP_0,
@@ -67,8 +73,74 @@ enum
   PROP_TARGET_LRA
 };
 
-/* pad templates */
+/* Primitives to Gaussian Filter */
+static void precomputeGaussianKernel(double* kernel) {
+    double filterSum = 0.0;
 
+    // Calculate Gaussian kernel
+    for (int i = 0; i < FILTER_SIZE; i++) {
+        double x = i - (FILTER_SIZE - 1) / 2.0;
+        kernel[i] = exp(-0.5 * x * x / (FILTER_SIGMA * FILTER_SIGMA));
+        filterSum += kernel[i];
+    }
+
+    // Normalize the kernel
+    for (int i = 0; i < FILTER_SIZE; i++) {
+        kernel[i] /= filterSum;
+    }
+}
+
+double gaussianFilter(Queue* queue, double* kernel) {
+    double sum = 0.0;
+    int rear = queue->rear;
+    int size = queue->size;
+
+    // Apply Gaussian filter
+    for (int i = 0; i < FILTER_SIZE && i < size; i++) {
+        int index = (rear - i + QUEUE_SIZE) % QUEUE_SIZE;
+        sum += queue->data[index] * kernel[i];
+    }
+
+    return sum;
+}
+
+/* Primitives for queue */
+
+static void initQueue(Queue *queue) {
+    queue->front = queue->rear = -1;
+    queue->size = 0;
+    // Initialize the queue with 0
+    for (int i = 0; i < QUEUE_SIZE; i++) {
+        queue->data[i] = 0.0;
+    }
+}
+
+static float topQueue(Queue *queue) {
+    return queue->data[queue->rear];
+}
+
+int isFull(Queue* queue) {
+    return queue->size == QUEUE_SIZE;
+}
+
+void enqueue(Queue* queue, double item) {
+    if (isFull(queue)) {
+        queue->front = (queue->front + 1) % QUEUE_SIZE;
+    } else {
+        queue->size++;
+    }
+    queue->rear = (queue->rear + 1) % QUEUE_SIZE;
+    queue->data[queue->rear] = item;
+}
+
+static void pushWithGaussianFilter(Queue* queue, double item, double* kernel) {
+    enqueue(queue, item);
+    if (queue->size < FILTER_SIZE) return;
+    double filteredItem = gaussianFilter(queue, kernel);
+    queue->data[queue->rear] = filteredItem;
+}
+
+/* pad templates */
 
 static GstStaticPadTemplate gst_loudnorm_src_template =
 GST_STATIC_PAD_TEMPLATE ("src",
@@ -93,6 +165,8 @@ GST_STATIC_PAD_TEMPLATE ("sink",
     "rate = (int) 48000"
     )
   );
+
+
 
 /* class initialization */
 
@@ -144,9 +218,11 @@ gst_loudnorm_class_init (GstLoudnormClass * klass)
 static void
 gst_loudnorm_init (GstLoudnorm * this)
 {
-  this->ebur128_state = ebur128_init (1, 48000, EBUR128_MODE_I|EBUR128_MODE_LRA|EBUR128_MODE_SAMPLE_PEAK);
+  this->ebur128_state = ebur128_init (1, 48000, EBUR128_MODE_I|EBUR128_MODE_LRA);
   this->target_loudness = -23.0;
   this->target_lra = 7.0;
+  initQueue(&this->gain_history);
+  precomputeGaussianKernel(this->kernel);
 }
 
 void
@@ -243,21 +319,26 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
   }
 
   guint samples = gst_buffer_get_size (buf) / sizeof (int16_t);
-  double k = 2.0;
 
   int16_t *samples_ptr = (int16_t *) map.data;
 
   ebur128_add_frames_short (this->ebur128_state, samples_ptr, samples);
 
-  double loudness;
-  ebur128_loudness_global (this->ebur128_state, &loudness);
+  double loudness_global;
+  ebur128_loudness_global (this->ebur128_state, &loudness_global);
 
-  double lra;
-  ebur128_loudness_range (this->ebur128_state, &lra);
+  double loudness_momentary;
+  ebur128_loudness_momentary (this->ebur128_state, &loudness_momentary);
 
-  if (loudness == -HUGE_VAL) loudness = -23.0;
+  if (loudness_global == -HUGE_VAL) loudness_global = -23.0;
 
-  double gain = (this->target_loudness - loudness) + k*(this->target_lra - lra);
+  double gain = (this->target_loudness - loudness_momentary);
+
+  pushWithGaussianFilter(&this->gain_history, gain, this->kernel);
+
+  GST_WARNING_OBJECT (this, "Gain: %f, %f", topQueue(&this->gain_history), (this->target_loudness - loudness_momentary));
+
+  gain = topQueue(&this->gain_history);
 
   for (int i = 0; i < samples; ++i) {
     if (samples_ptr[i] * pow(10, gain / 20.0) > 32767) samples_ptr[i] = 32767;
