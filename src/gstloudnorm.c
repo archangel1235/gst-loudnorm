@@ -325,7 +325,7 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
   ebur128_add_frames_short (this->ebur128_state, samples_ptr, samples);
 
   double loudness_global;
-  ebur128_loudness_global (this->ebur128_state, &loudness_global);
+  ebur128_loudness_shortterm (this->ebur128_state, &loudness_global);
 
   double loudness_momentary;
   ebur128_loudness_momentary (this->ebur128_state, &loudness_momentary);
