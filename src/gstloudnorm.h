@@ -30,9 +30,9 @@ G_BEGIN_DECLS
 #define GST_LOUDNORM_CLASS(klass)   (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_LOUDNORM,GstLoudnormClass))
 #define GST_IS_LOUDNORM(obj)   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_LOUDNORM))
 #define GST_IS_LOUDNORM_CLASS(obj)   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_LOUDNORM))
-#define QUEUE_SIZE 30
-#define FILTER_SIZE 30
-#define FILTER_SIGMA 1.0
+#define QUEUE_SIZE 20
+#define FILTER_SIZE 20
+#define FILTER_SIGMA 1.8
 
 typedef struct _GstLoudnorm GstLoudnorm;
 typedef struct _GstLoudnormClass GstLoudnormClass;

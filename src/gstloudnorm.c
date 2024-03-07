@@ -80,7 +80,7 @@ static void precomputeGaussianKernel(double* kernel) {
     // Calculate Gaussian kernel
     for (int i = 0; i < FILTER_SIZE; i++) {
         double x = i - (FILTER_SIZE - 1) / 2.0;
-        kernel[i] = exp(-0.5 * x * x / (FILTER_SIGMA * FILTER_SIGMA));
+        kernel[i] = exp(-0.5 * x / (FILTER_SIGMA * FILTER_SIGMA));
         filterSum += kernel[i];
     }
 
@@ -336,7 +336,7 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
 
   double momentary_gain = this->target_loudness - loudness_momentary;
 
-  double gain = (momentary_gain < global_gain) ? momentary_gain : global_gain;
+  double gain = momentary_gain < global_gain ? momentary_gain : global_gain;  
 
   pushWithGaussianFilter(&this->gain_history, gain, this->kernel);
 
