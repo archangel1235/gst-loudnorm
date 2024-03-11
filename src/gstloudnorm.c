@@ -209,7 +209,7 @@ gst_loudnorm_class_init (GstLoudnormClass * klass)
 
   g_object_class_install_property (gobject_class, PROP_SILENT_THRESHOLD,
       g_param_spec_float ("silent-threshold", "Silent Threshold",
-          "Silent Threshold in LUFS", -70.0, 0.0, -70.0,
+          "Silent Threshold in LUFS", -80.0, 0.0, -50.0,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   gobject_class->dispose = gst_loudnorm_dispose;
@@ -352,14 +352,8 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
 
   pushWithGaussianFilter(&this->gain_history, gain, this->kernel);
 
-  if (loudness_momentary < this->silence_threshold) {
-    gain = 0;
-  }
-  else
-  {
-    gain = topQueue(&this->gain_history);
-  }
-
+  gain = topQueue(&this->gain_history);
+  
   for (int i = 0; i < samples; ++i) {
     if (samples_ptr[i] * pow(10, gain / 20.0) > 32767) samples_ptr[i] = 32767;
     else if (samples_ptr[i] * pow(10, gain / 20.0) < -32768) samples_ptr[i] = -32768;
