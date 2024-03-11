@@ -32,7 +32,7 @@ G_BEGIN_DECLS
 #define GST_IS_LOUDNORM_CLASS(obj)   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_LOUDNORM))
 #define QUEUE_SIZE 20
 #define FILTER_SIZE 20
-#define FILTER_SIGMA 1.8
+#define FILTER_SIGMA 1.7
 
 typedef struct _GstLoudnorm GstLoudnorm;
 typedef struct _GstLoudnormClass GstLoudnormClass;
@@ -50,6 +50,7 @@ struct _GstLoudnorm
   ebur128_state *ebur128_state;
   float target_loudness;
   float target_lra;
+  float silence_threshold;
   Queue gain_history;
   double kernel[FILTER_SIZE];
 };

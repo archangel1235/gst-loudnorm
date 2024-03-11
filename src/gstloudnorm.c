@@ -70,7 +70,8 @@ enum
 {
   PROP_0,
   PROP_TARGET_LOUDNESS,
-  PROP_TARGET_LRA
+  PROP_TARGET_LRA,
+  PROP_SILENT_THRESHOLD
 };
 
 /* Primitives to Gaussian Filter */
@@ -206,6 +207,11 @@ gst_loudnorm_class_init (GstLoudnormClass * klass)
           "Target Loudness Range in LUFS", 1.0, 20.0, 7.0,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
+  g_object_class_install_property (gobject_class, PROP_SILENT_THRESHOLD,
+      g_param_spec_float ("silent-threshold", "Silent Threshold",
+          "Silent Threshold in LUFS", -70.0, 0.0, -70.0,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
   gobject_class->dispose = gst_loudnorm_dispose;
   gobject_class->finalize = gst_loudnorm_finalize;
   audio_filter_class->setup = GST_DEBUG_FUNCPTR (gst_loudnorm_setup);
@@ -240,6 +246,9 @@ gst_loudnorm_set_property (GObject * object, guint property_id,
     case PROP_TARGET_LRA:
       this->target_lra = g_value_get_float (value);
       break;
+    case PROP_SILENT_THRESHOLD:
+      this->silence_threshold = g_value_get_float (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -260,6 +269,9 @@ gst_loudnorm_get_property (GObject * object, guint property_id,
       break;
     case PROP_TARGET_LRA:
       g_value_set_float (value, this->target_lra);
+      break;
+    case PROP_SILENT_THRESHOLD:
+      g_value_set_float (value, this->silence_threshold);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -324,23 +336,29 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
 
   ebur128_add_frames_short (this->ebur128_state, samples_ptr, samples);
 
-  double loudness_global;
-  ebur128_loudness_shortterm (this->ebur128_state, &loudness_global);
+  double loudness_shortterm;
+  ebur128_loudness_shortterm (this->ebur128_state, &loudness_shortterm);
 
   double loudness_momentary;
   ebur128_loudness_momentary (this->ebur128_state, &loudness_momentary);
 
-  if (loudness_global == -HUGE_VAL) loudness_global = -23.0;
+  if (loudness_shortterm == -HUGE_VAL) loudness_shortterm = -23.0;
 
-  double global_gain = this->target_loudness - loudness_global;
+  double shortterm_gain = this->target_loudness - loudness_shortterm;
 
   double momentary_gain = this->target_loudness - loudness_momentary;
 
-  double gain = momentary_gain < global_gain ? momentary_gain : global_gain;  
+  double gain = momentary_gain < shortterm_gain ? momentary_gain : shortterm_gain;  
 
   pushWithGaussianFilter(&this->gain_history, gain, this->kernel);
 
-  gain = topQueue(&this->gain_history);
+  if (loudness_momentary < this->silence_threshold) {
+    gain = 0;
+  }
+  else
+  {
+    gain = topQueue(&this->gain_history);
+  }
 
   for (int i = 0; i < samples; ++i) {
     if (samples_ptr[i] * pow(10, gain / 20.0) > 32767) samples_ptr[i] = 32767;
@@ -360,7 +378,7 @@ plugin_init (GstPlugin * plugin)
 
 
 #ifndef VERSION
-#define VERSION "0.0.1"
+#define VERSION "0.1.0"
 #endif
 #ifndef PACKAGE
 #define PACKAGE "Audio Filters"
