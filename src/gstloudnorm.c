@@ -360,6 +360,9 @@ gst_loudnorm_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
     else samples_ptr[i] = (short)(samples_ptr[i] * pow(10, gain / 20.0));
   }
 
+  //unmap the buffer
+  gst_buffer_unmap (buf, &map);
+  
   return GST_FLOW_OK;
 }
 
